@@ -6,6 +6,13 @@
   const dpr = typeof window === 'undefined' ? 1.25 : Math.min(window.devicePixelRatio, 2)
   let renderMode: 'manual' | 'on-demand' = 'manual'
   let rendererReady = false
+  let blockHovered = false
+  let blockDisplacement = 0
+
+  function handleBlockDebugChange(state: { hovered: boolean; displacement: number }) {
+    blockHovered = state.hovered
+    blockDisplacement = state.displacement
+  }
 
   function createRenderer(canvas: HTMLCanvasElement) {
     const renderer = new WebGPURenderer({
@@ -40,8 +47,19 @@
   <section class="viewport" aria-label="Studio render of the modular block asset">
     <Canvas colorSpace="srgb" shadows={true} {renderMode} {dpr} {createRenderer}>
       {#if rendererReady}
-        <BlockScene />
+        <BlockScene onDebugChange={handleBlockDebugChange} />
       {/if}
     </Canvas>
+    <aside class="debug-overlay" aria-live="polite">
+      <div class="debug-title">Block Debug</div>
+      <div class="debug-row">
+        <span>hovered</span>
+        <span class:debug-true={blockHovered}>{blockHovered ? 'true' : 'false'}</span>
+      </div>
+      <div class="debug-row">
+        <span>displacement</span>
+        <span>{blockDisplacement.toFixed(4)}</span>
+      </div>
+    </aside>
   </section>
 </main>

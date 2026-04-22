@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { T, useThrelte } from '@threlte/core'
-  import { OrbitControls } from '@threlte/extras'
+  import { OrbitControls, interactivity } from '@threlte/extras'
   import * as THREE from 'three'
   import { PMREMGenerator } from 'three/webgpu'
   import type { WebGPURenderer } from 'three/webgpu'
@@ -11,8 +11,12 @@
   import Block from './Block.svelte'
 
   export let controls = true
+  export let onDebugChange:
+    | ((state: { hovered: boolean; displacement: number }) => void)
+    | undefined = undefined
 
   const { renderer, scene, toneMapping } = useThrelte<WebGPURenderer>()
+  interactivity()
   const background = new THREE.Color('#d7d1ca')
   let orbitControls: OrbitControlsImpl | undefined
 
@@ -112,4 +116,5 @@
   springDamping={19}
   maxGlowIntensity={4.35}
   glowColor="#f2f7ff"
+  {onDebugChange}
 />

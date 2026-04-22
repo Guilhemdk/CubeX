@@ -75,6 +75,46 @@ body {
 .viewport canvas:active {
   cursor: grabbing;
 }
+.debug-overlay {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  z-index: 10;
+  min-width: 172px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  background: rgba(20, 24, 33, 0.72);
+  color: rgba(242, 247, 255, 0.96);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+  user-select: none;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.debug-title {
+  margin-bottom: 7px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.95;
+}
+
+.debug-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.debug-row + .debug-row {
+  margin-top: 4px;
+}
+
+.debug-true {
+  color: #9dffc9;
+}
 
 @media (max-width: 900px) {
   .page {

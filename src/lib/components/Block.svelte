@@ -1,19 +1,18 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
   import { T, useTask } from '@threlte/core'
-  import { Color, Group, MathUtils, Vector3, type ColorRepresentation, type Material } from 'three'
+  import { Color, Group, MathUtils, Vector3, type ColorRepresentation, type Mesh } from 'three'
   import {
     blockGeometry,
-    blockMaterial,
-    createBlockGlowMaterial,
-    getBlockGlowGeometry,
+    // blockInnerCoreGeometry,
+    // createBlockInnerCoreMaterial,
+    createBlockShellMaterial,
     type BlockDirection,
   } from '../block/blockAsset'
 
   export let position: [number, number, number] = [0, 0, 0]
   export let rotation: [number, number, number] = [0, 0, 0]
   export let scale: number | [number, number, number] = 1
-  export let material: Material | Material[] = blockMaterial
   export let castShadow = true
   export let receiveShadow = true
   export let interactive = true
@@ -23,21 +22,24 @@
   export let maxGlowIntensity = 4.1
   export let glowColor: ColorRepresentation = '#edf4ff'
   export let inwardFaceDirection: BlockDirection = [0, 0, 1]
+  export let onDebugChange:
+    | ((state: { hovered: boolean; displacement: number }) => void)
+    | undefined = undefined
 
   let resolvedScale: [number, number, number] = [1, 1, 1]
   let movingGroup: Group | undefined
   let hovered = false
   let currentDisplacement = 0
   let springVelocity = 0
-  let glowGeometry = getBlockGlowGeometry(inwardFaceDirection)
   const motionDirection = new Vector3()
   const workingOffset = new Vector3()
-  const baseGlowColor = new Color(glowColor)
-  const glowMaterial = createBlockGlowMaterial(glowColor)
+  const coreBaseColor = new Color(glowColor)
+  const shellMaterialController = createBlockShellMaterial({ glowColor, inwardFaceDirection })
+  const shellMaterial = shellMaterialController.material
+  // const coreMaterial = createBlockInnerCoreMaterial(glowColor)
   const settleThreshold = 0.0005
 
   $: resolvedScale = Array.isArray(scale) ? ([...scale] as [number, number, number]) : [scale, scale, scale]
-  $: glowGeometry = getBlockGlowGeometry(inwardFaceDirection)
   $: {
     motionDirection.set(...inwardFaceDirection)
 
@@ -47,19 +49,43 @@
 
     motionDirection.normalize()
   }
-  $: baseGlowColor.set(glowColor)
+  $: coreBaseColor.set(glowColor)
+
+  function emitDebugState() {
+    onDebugChange?.({ hovered, displacement: currentDisplacement })
+  }
 
   function handlePointerEnter() {
     if (!interactive) return
 
     hovered = true
+    emitDebugState()
+    animationTask.start()
   }
 
   function handlePointerLeave() {
     hovered = false
+    emitDebugState()
+    animationTask.start()
+  }
+  function disableRaycast(mesh: Mesh) {
+    mesh.raycast = () => {}
   }
 
-  useTask(
+  function applyGlowState(normalizedDisplacement: number) {
+    shellMaterialController.setGlowState({
+      normalizedDisplacement,
+      glowColor,
+      maxGlowIntensity,
+      inwardFaceDirection,
+    })
+
+    const scaledCoreIntensity = normalizedDisplacement * Math.min(0.28 + maxGlowIntensity * 0.16, 1.35)
+    // coreMaterial.opacity = scaledCoreIntensity * 0.64
+    // coreMaterial.color.copy(coreBaseColor).multiplyScalar(0.42 + scaledCoreIntensity * 1.95)
+  }
+
+  const animationTask = useTask(
     (delta) => {
       const dt = Math.min(delta, 1 / 20)
       const targetDisplacement = interactive && hovered ? extractionDistance : 0
@@ -75,6 +101,7 @@
       ) {
         currentDisplacement = targetDisplacement
         springVelocity = 0
+        animationTask.stop()
       }
 
       const normalizedDisplacement =
@@ -84,19 +111,22 @@
         workingOffset.copy(motionDirection).multiplyScalar(currentDisplacement)
         movingGroup.position.copy(workingOffset)
       }
-
-      glowMaterial.opacity = normalizedDisplacement * 0.96
-      glowMaterial.color.copy(baseGlowColor).multiplyScalar(0.42 + normalizedDisplacement * maxGlowIntensity)
+      applyGlowState(normalizedDisplacement)
+      emitDebugState()
     },
     {
-      running: () =>
-        Math.abs((interactive && hovered ? extractionDistance : 0) - currentDisplacement) > settleThreshold ||
-        Math.abs(springVelocity) > settleThreshold,
+      autoStart: false,
     },
   )
 
+  onMount(() => {
+    applyGlowState(0)
+    emitDebugState()
+  })
+
   onDestroy(() => {
-    glowMaterial.dispose()
+    shellMaterialController.dispose()
+    // coreMaterial.dispose()
   })
 </script>
 
@@ -104,11 +134,25 @@
   {position}
   {rotation}
   scale={resolvedScale}
-  onpointerenter={handlePointerEnter}
-  onpointerleave={handlePointerLeave}
 >
   <T.Group bind:ref={movingGroup}>
-    <T.Mesh geometry={blockGeometry} {material} {castShadow} {receiveShadow} />
-    <T.Mesh geometry={glowGeometry} material={glowMaterial} renderOrder={1} />
+    <T.Mesh
+      geometry={blockGeometry}
+      material={shellMaterial}
+      {castShadow}
+      {receiveShadow}
+      onpointerenter={handlePointerEnter}
+      onpointerleave={handlePointerLeave}
+      onpointerover={handlePointerEnter}
+      onpointerout={handlePointerLeave}
+    />
+    <!-- <T.Mesh -->
+      <!-- geometry={blockInnerCoreGeometry} -->
+      <!-- material={coreMaterial} -->
+    <!--   castShadow={false} -->
+    <!--   receiveShadow={false} -->
+    <!--   renderOrder={1} -->
+    <!--   oncreate={disableRaycast} -->
+    <!-- /> -->
   </T.Group>
 </T.Group>

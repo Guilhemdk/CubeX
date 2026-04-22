@@ -1,20 +1,34 @@
 import {
   AdditiveBlending,
   CanvasTexture,
-  ClampToEdgeWrapping,
   Color,
-  DoubleSide,
   LinearFilter,
   LinearMipmapLinearFilter,
   MeshBasicMaterial,
-  MeshStandardMaterial,
-  PlaneGeometry,
   RepeatWrapping,
-  type ColorRepresentation,
+  Vector3,
   type BufferGeometry,
+  type ColorRepresentation,
 } from 'three'
+import {
+  MeshStandardNodeMaterial,
+} from 'three/webgpu'
+import {
+  abs,
+  clamp,
+  dot,
+  float,
+  length,
+  max as tslMax,
+  normalLocal,
+  oneMinus,
+  positionLocal,
+  smoothstep,
+  uniform,
+  vec2,
+} from 'three/tsl'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
-import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 export const BLOCK_DIMENSIONS = Object.freeze([1, 1, 1] as const)
 export const BLOCK_BEVEL_RADIUS = 0.028
@@ -30,12 +44,33 @@ type BrushTextureOptions = {
   repeat: number
 }
 
-type GlowGeometryOptions = {
-  panelOffset?: number
-  panelScale?: number
+type BlockShellMaterialOptions = {
+  glowColor?: ColorRepresentation
+  inwardFaceDirection?: BlockDirection
 }
 
-const sideGlowGeometryCache = new Map<string, BufferGeometry>()
+export type BlockShellGlowState = {
+  normalizedDisplacement: number
+  glowColor: ColorRepresentation
+  maxGlowIntensity: number
+  inwardFaceDirection: BlockDirection
+}
+
+export type BlockShellMaterialController = {
+  material: MeshStandardNodeMaterial
+  setGlowState: (state: BlockShellGlowState) => void
+  dispose: () => void
+}
+
+function normalizeBlockDirection(direction: BlockDirection, target: Vector3) {
+  target.set(direction[0], direction[1], direction[2])
+
+  if (target.lengthSq() === 0) {
+    target.set(0, 0, 1)
+  }
+
+  target.normalize()
+}
 
 function createSeededRandom(seed: number) {
   let state = seed >>> 0
@@ -135,89 +170,6 @@ function createBrushedTexture({
   return texture
 }
 
-function smoothstep(edge0: number, edge1: number, value: number) {
-  const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)))
-
-  return t * t * (3 - 2 * t)
-}
-
-function createGlowMaskTexture(size = 192) {
-  const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
-
-  const context = canvas.getContext('2d')
-
-  if (!context) {
-    throw new Error('Failed to create glow mask texture for the modular block.')
-  }
-
-  const image = context.createImageData(size, size)
-  const data = image.data
-
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const u = x / (size - 1)
-      const v = y / (size - 1)
-      const distanceToEdge = Math.min(u, 1 - u, v, 1 - v)
-      const crispBorder = 1 - smoothstep(0.028, 0.11, distanceToEdge)
-      const softBorder = 1 - smoothstep(0.05, 0.28, distanceToEdge)
-      const alpha = Math.max(0, Math.min(1, crispBorder * 1.1 + softBorder * 0.48))
-      const value = Math.round(alpha * 255)
-      const pixel = (y * size + x) * 4
-
-      data[pixel + 0] = value
-      data[pixel + 1] = value
-      data[pixel + 2] = value
-      data[pixel + 3] = 255
-    }
-  }
-
-  context.putImageData(image, 0, 0)
-
-  const texture = new CanvasTexture(canvas)
-  texture.wrapS = ClampToEdgeWrapping
-  texture.wrapT = ClampToEdgeWrapping
-  texture.minFilter = LinearMipmapLinearFilter
-  texture.magFilter = LinearFilter
-  texture.needsUpdate = true
-
-  return texture
-}
-
-function getDominantAxis(direction: BlockDirection) {
-  const [x, y, z] = direction
-  const magnitudes = [Math.abs(x), Math.abs(y), Math.abs(z)]
-
-  if (magnitudes[0] >= magnitudes[1] && magnitudes[0] >= magnitudes[2]) {
-    return 0
-  }
-
-  if (magnitudes[1] >= magnitudes[2]) {
-    return 1
-  }
-
-  return 2
-}
-
-function createGlowPanel(axis: number, sign: -1 | 1, panelScale: number, panelOffset: number) {
-  const geometry = new PlaneGeometry(panelScale, panelScale)
-  const surfacePosition = 0.5 + panelOffset
-
-  if (axis === 0) {
-    geometry.rotateY(sign === 1 ? Math.PI / 2 : -Math.PI / 2)
-    geometry.translate(sign * surfacePosition, 0, 0)
-  } else if (axis === 1) {
-    geometry.rotateX(sign === 1 ? -Math.PI / 2 : Math.PI / 2)
-    geometry.translate(0, sign * surfacePosition, 0)
-  } else {
-    geometry.rotateY(sign === 1 ? 0 : Math.PI)
-    geometry.translate(0, 0, sign * surfacePosition)
-  }
-
-  return geometry
-}
-
 function createBlockGeometry(): BufferGeometry {
   const sourceGeometry = new RoundedBoxGeometry(
     BLOCK_DIMENSIONS[0],
@@ -237,6 +189,19 @@ function createBlockGeometry(): BufferGeometry {
   return geometry
 }
 
+// function createBlockInnerCoreGeometry(): BufferGeometry {
+//   const sourceGeometry = new RoundedBoxGeometry(0.58, 0.58, 0.58, 2, 0.074)
+//   const geometry = mergeVertices(sourceGeometry, 1e-5)
+//
+//   sourceGeometry.dispose()
+//   geometry.computeVertexNormals()
+//   geometry.computeBoundingBox()
+//   geometry.computeBoundingSphere()
+//   geometry.name = 'VaultBlockInnerCoreGeometry'
+//
+//   return geometry
+// }
+
 const sharedRoughnessMap = createBrushedTexture({
   seed: 17,
   base: 152,
@@ -252,12 +217,19 @@ const sharedBumpMap = createBrushedTexture({
   speckle: 5,
   repeat: 1.65,
 })
-const sharedGlowMask = createGlowMaskTexture()
 
 export const blockGeometry = createBlockGeometry()
+// export const blockInnerCoreGeometry = createBlockInnerCoreGeometry()
 
-export function createBlockMaterial() {
-  const material = new MeshStandardMaterial({
+export function createBlockShellMaterial(options: BlockShellMaterialOptions = {}): BlockShellMaterialController {
+  const initialDirection = new Vector3()
+  normalizeBlockDirection(options.inwardFaceDirection ?? [0, 0, 1], initialDirection)
+
+  const glowStrengthUniform = uniform(0)
+  const glowColorUniform = uniform(new Color(options.glowColor ?? '#f2f7ff'))
+  const inwardDirectionUniform = uniform(initialDirection.clone())
+
+  const material = new MeshStandardNodeMaterial({
     color: new Color('#26282f'),
     metalness: 0.96,
     roughness: 0.68,
@@ -267,69 +239,81 @@ export function createBlockMaterial() {
     envMapIntensity: 0.82,
   })
 
-  material.name = 'VaultBlockMaterial'
+  material.name = 'VaultBlockShellMaterial'
   material.dithering = true
 
-  return material
-}
+  const localNormal = normalLocal.normalize()
+  const normalAbs = abs(localNormal)
+  const axisWeightX = smoothstep(float(0.56), float(0.97), normalAbs.x)
+  const axisWeightY = smoothstep(float(0.56), float(0.97), normalAbs.y)
+  const axisWeightZ = smoothstep(float(0.56), float(0.97), normalAbs.z)
+  const axisWeightSum = tslMax(axisWeightX.add(axisWeightY).add(axisWeightZ), float(0.0001))
 
-export function getBlockGlowGeometry(
-  inwardFaceDirection: BlockDirection = [0, 0, 1],
-  options: GlowGeometryOptions = {},
-) {
-  const panelScale = options.panelScale ?? 0.985
-  const panelOffset = options.panelOffset ?? 0.01
-  const dominantAxis = getDominantAxis(inwardFaceDirection)
-  const cacheKey = `${dominantAxis}:${panelScale}:${panelOffset}`
-  const cachedGeometry = sideGlowGeometryCache.get(cacheKey)
+  const localPosition = positionLocal
+  const radiusOnXFace = length(vec2(localPosition.y, localPosition.z)).mul(0.9)
+  const radiusOnYFace = length(vec2(localPosition.x, localPosition.z)).mul(0.9)
+  const radiusOnZFace = length(vec2(localPosition.x, localPosition.y)).mul(0.9)
+  const faceRadius = axisWeightX
+    .mul(radiusOnXFace)
+    .add(axisWeightY.mul(radiusOnYFace))
+    .add(axisWeightZ.mul(radiusOnZFace))
+    .div(axisWeightSum)
 
-  if (cachedGeometry) {
-    return cachedGeometry
+  const propagationRadius = clamp(glowStrengthUniform.mul(1.22).add(0.14), float(0.08), float(1.3))
+  const propagationMask = oneMinus(smoothstep(float(0.06), propagationRadius, faceRadius))
+  const coreMask = oneMinus(smoothstep(float(0.0), float(1.38), faceRadius))
+
+  const inwardAlignment = dot(localNormal, inwardDirectionUniform.normalize())
+  const inwardFaceSuppression = smoothstep(float(0.72), float(0.98), inwardAlignment)
+  const outwardFaceMask = oneMinus(inwardFaceSuppression)
+
+  const emissiveMask = propagationMask
+    .mul(0.72)
+    .add(coreMask.mul(0.52))
+    .mul(outwardFaceMask)
+    .mul(glowStrengthUniform)
+
+  material.emissiveNode = glowColorUniform.mul(emissiveMask)
+  material.emissiveIntensity = 1
+
+  const normalizedDirection = new Vector3()
+
+  const setGlowState = ({ normalizedDisplacement, maxGlowIntensity, glowColor, inwardFaceDirection }: BlockShellGlowState) => {
+    const clampedDisplacement = Math.max(0, Math.min(1, normalizedDisplacement))
+    const scaledStrength = Math.min(clampedDisplacement * (0.18 + maxGlowIntensity * 0.21), 1.45)
+
+    glowStrengthUniform.value = scaledStrength
+    glowColorUniform.value.set(glowColor)
+    normalizeBlockDirection(inwardFaceDirection, normalizedDirection)
+    inwardDirectionUniform.value.copy(normalizedDirection)
   }
 
-  const geometries = [0, 1, 2]
-    .filter((axis) => axis !== dominantAxis)
-    .flatMap((axis) => [
-      createGlowPanel(axis, 1, panelScale, panelOffset),
-      createGlowPanel(axis, -1, panelScale, panelOffset),
-    ])
-  const mergedGeometry = mergeGeometries(geometries, false)
-
-  if (!mergedGeometry) {
-    throw new Error('Failed to build the block glow geometry.')
+  return {
+    material,
+    setGlowState,
+    dispose: () => {
+      material.dispose()
+    },
   }
-
-  geometries.forEach((geometry) => geometry.dispose())
-  mergedGeometry.computeVertexNormals()
-  mergedGeometry.computeBoundingBox()
-  mergedGeometry.computeBoundingSphere()
-  mergedGeometry.name = `VaultBlockGlowGeometry-${cacheKey}`
-  sideGlowGeometryCache.set(cacheKey, mergedGeometry)
-
-  return mergedGeometry
 }
 
-export function createBlockGlowMaterial(color: ColorRepresentation = '#f1f6ff') {
-  const material = new MeshBasicMaterial({
-    color: new Color(color),
-    alphaMap: sharedGlowMask,
-    transparent: true,
-    opacity: 0,
-    blending: AdditiveBlending,
-    depthWrite: false,
-    toneMapped: false,
-    side: DoubleSide,
-  })
-
-  material.name = 'VaultBlockGlowMaterial'
-
-  return material
-}
-
-export const blockMaterial = createBlockMaterial()
+// export function createBlockInnerCoreMaterial(color: ColorRepresentation = '#f2f7ff') {
+//   const material = new MeshBasicMaterial({
+//     color: new Color(color),
+//     transparent: true,
+//     opacity: 0,
+//     blending: AdditiveBlending,
+//     depthWrite: false,
+//     depthTest: false,
+//     toneMapped: false,
+//   })
+//
+//   material.name = 'VaultBlockInnerCoreMaterial'
+//
+//   return material
+// }
 
 export const blockTextures = {
   roughnessMap: sharedRoughnessMap,
   bumpMap: sharedBumpMap,
-  glowMask: sharedGlowMask,
 }
