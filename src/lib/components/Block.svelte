@@ -1,11 +1,9 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
   import { T, useTask } from '@threlte/core'
-  import { Color, Group, MathUtils, Vector3, type ColorRepresentation, type Mesh } from 'three'
+  import { Group, MathUtils, Vector3, type ColorRepresentation } from 'three'
   import {
     blockGeometry,
-    // blockInnerCoreGeometry,
-    // createBlockInnerCoreMaterial,
     createBlockShellMaterial,
     type BlockDirection,
   } from '../block/blockAsset'
@@ -22,6 +20,7 @@
   export let maxGlowIntensity = 4.1
   export let glowColor: ColorRepresentation = '#edf4ff'
   export let inwardFaceDirection: BlockDirection = [0, 0, 1]
+  export let enableCoreMask = false
   export let onDebugChange:
     | ((state: { hovered: boolean; displacement: number }) => void)
     | undefined = undefined
@@ -33,10 +32,8 @@
   let springVelocity = 0
   const motionDirection = new Vector3()
   const workingOffset = new Vector3()
-  const coreBaseColor = new Color(glowColor)
-  const shellMaterialController = createBlockShellMaterial({ glowColor, inwardFaceDirection })
+  const shellMaterialController = createBlockShellMaterial({ glowColor, inwardFaceDirection, enableCoreMask })
   const shellMaterial = shellMaterialController.material
-  // const coreMaterial = createBlockInnerCoreMaterial(glowColor)
   const settleThreshold = 0.0005
 
   $: resolvedScale = Array.isArray(scale) ? ([...scale] as [number, number, number]) : [scale, scale, scale]
@@ -49,7 +46,6 @@
 
     motionDirection.normalize()
   }
-  $: coreBaseColor.set(glowColor)
 
   function emitDebugState() {
     onDebugChange?.({ hovered, displacement: currentDisplacement })
@@ -68,9 +64,6 @@
     emitDebugState()
     animationTask.start()
   }
-  function disableRaycast(mesh: Mesh) {
-    mesh.raycast = () => {}
-  }
 
   function applyGlowState(normalizedDisplacement: number) {
     shellMaterialController.setGlowState({
@@ -78,11 +71,8 @@
       glowColor,
       maxGlowIntensity,
       inwardFaceDirection,
+      enableCoreMask,
     })
-
-    const scaledCoreIntensity = normalizedDisplacement * Math.min(0.28 + maxGlowIntensity * 0.16, 1.35)
-    // coreMaterial.opacity = scaledCoreIntensity * 0.64
-    // coreMaterial.color.copy(coreBaseColor).multiplyScalar(0.42 + scaledCoreIntensity * 1.95)
   }
 
   const animationTask = useTask(
@@ -126,7 +116,6 @@
 
   onDestroy(() => {
     shellMaterialController.dispose()
-    // coreMaterial.dispose()
   })
 </script>
 
@@ -146,13 +135,5 @@
       onpointerover={handlePointerEnter}
       onpointerout={handlePointerLeave}
     />
-    <!-- <T.Mesh -->
-      <!-- geometry={blockInnerCoreGeometry} -->
-      <!-- material={coreMaterial} -->
-    <!--   castShadow={false} -->
-    <!--   receiveShadow={false} -->
-    <!--   renderOrder={1} -->
-    <!--   oncreate={disableRaycast} -->
-    <!-- /> -->
   </T.Group>
 </T.Group>

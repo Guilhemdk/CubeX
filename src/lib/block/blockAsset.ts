@@ -15,7 +15,6 @@ import {
 } from 'three/webgpu'
 import {
   abs,
-  clamp,
   dot,
   float,
   length,
@@ -47,6 +46,7 @@ type BrushTextureOptions = {
 type BlockShellMaterialOptions = {
   glowColor?: ColorRepresentation
   inwardFaceDirection?: BlockDirection
+  enableCoreMask?: boolean
 }
 
 export type BlockShellGlowState = {
@@ -54,6 +54,7 @@ export type BlockShellGlowState = {
   glowColor: ColorRepresentation
   maxGlowIntensity: number
   inwardFaceDirection: BlockDirection
+  enableCoreMask: boolean
 }
 
 export type BlockShellMaterialController = {
@@ -228,6 +229,7 @@ export function createBlockShellMaterial(options: BlockShellMaterialOptions = {}
   const glowStrengthUniform = uniform(0)
   const glowColorUniform = uniform(new Color(options.glowColor ?? '#f2f7ff'))
   const inwardDirectionUniform = uniform(initialDirection.clone())
+  const coreMaskEnabledUniform = uniform(options.enableCoreMask ? 1 : 0)
 
   const material = new MeshStandardNodeMaterial({
     color: new Color('#26282f'),
@@ -258,18 +260,14 @@ export function createBlockShellMaterial(options: BlockShellMaterialOptions = {}
     .add(axisWeightY.mul(radiusOnYFace))
     .add(axisWeightZ.mul(radiusOnZFace))
     .div(axisWeightSum)
-
-  const propagationRadius = clamp(glowStrengthUniform.mul(1.22).add(0.14), float(0.08), float(1.3))
-  const propagationMask = oneMinus(smoothstep(float(0.06), propagationRadius, faceRadius))
+  const baseFaceRevealMask = float(0.72)
   const coreMask = oneMinus(smoothstep(float(0.0), float(1.38), faceRadius))
 
   const inwardAlignment = dot(localNormal, inwardDirectionUniform.normalize())
   const inwardFaceSuppression = smoothstep(float(0.72), float(0.98), inwardAlignment)
   const outwardFaceMask = oneMinus(inwardFaceSuppression)
-
-  const emissiveMask = propagationMask
-    .mul(0.72)
-    .add(coreMask.mul(0.52))
+  const emissiveMask = baseFaceRevealMask
+    .add(coreMask.mul(0.52).mul(coreMaskEnabledUniform))
     .mul(outwardFaceMask)
     .mul(glowStrengthUniform)
 
@@ -278,7 +276,13 @@ export function createBlockShellMaterial(options: BlockShellMaterialOptions = {}
 
   const normalizedDirection = new Vector3()
 
-  const setGlowState = ({ normalizedDisplacement, maxGlowIntensity, glowColor, inwardFaceDirection }: BlockShellGlowState) => {
+  const setGlowState = ({
+    normalizedDisplacement,
+    maxGlowIntensity,
+    glowColor,
+    inwardFaceDirection,
+    enableCoreMask,
+  }: BlockShellGlowState) => {
     const clampedDisplacement = Math.max(0, Math.min(1, normalizedDisplacement))
     const scaledStrength = Math.min(clampedDisplacement * (0.18 + maxGlowIntensity * 0.21), 1.45)
 
@@ -286,6 +290,7 @@ export function createBlockShellMaterial(options: BlockShellMaterialOptions = {}
     glowColorUniform.value.set(glowColor)
     normalizeBlockDirection(inwardFaceDirection, normalizedDirection)
     inwardDirectionUniform.value.copy(normalizedDirection)
+    coreMaskEnabledUniform.value = enableCoreMask ? 1 : 0
   }
 
   return {

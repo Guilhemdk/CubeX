@@ -111,10 +111,11 @@
   position={[0, 0, 0]}
   rotation={[0.03, -Math.PI / 4, 0]}
   inwardFaceDirection={[0, 0, 1]}
+  enableCoreMask={false}
   extractionDistance={0.16}
   springStiffness={200}
   springDamping={19}
   maxGlowIntensity={4.35}
-  glowColor="#f2f7ff"
+  glowColor="#FFF1DB"
   {onDebugChange}
 />
