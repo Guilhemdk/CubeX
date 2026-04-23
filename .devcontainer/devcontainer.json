@@ -4,7 +4,6 @@
     "dockerfile": "Dockerfile",
     "context": ".."
   },
-  "remoteUser": "node",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
   "forwardPorts": [5173, 4173],
   "portsAttributes": {
@@ -17,6 +16,8 @@
       "onAutoForward": "notify"
     }
   },
+  "remoteUser": "root",
+  "updateRemoteUserUID": false,
   "customizations": {
     "vscode": {
       "extensions": [
