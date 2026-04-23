@@ -8,7 +8,7 @@
   import type { OrbitControls as OrbitControlsImpl } from 'three/examples/jsm/controls/OrbitControls.js'
   import type { DirectionalLight, PerspectiveCamera } from 'three'
   import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
-  import FloorSurface from './FloorSurface.svelte'
+  import Chamber from './Chamber.svelte'
 
   export let controls = true
   export let onDebugChange:
@@ -103,4 +103,4 @@
 <T.DirectionalLight position={[-2.75, 1.25, 4.4]} intensity={0.82} />
 <T.DirectionalLight position={[-3.85, 2.8, -2.35]} intensity={0.34} />
 
-<FloorSurface {onDebugChange} />
+<Chamber {onDebugChange} />
