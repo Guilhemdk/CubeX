@@ -1,14 +1,15 @@
 import {
-  AdditiveBlending,
   CanvasTexture,
   Color,
+  DynamicDrawUsage,
+  InstancedBufferAttribute,
   LinearFilter,
   LinearMipmapLinearFilter,
-  MeshBasicMaterial,
   RepeatWrapping,
   Vector3,
   type BufferGeometry,
   type ColorRepresentation,
+  type Plane,
 } from 'three'
 import {
   MeshStandardNodeMaterial,
@@ -17,6 +18,7 @@ import {
   abs,
   dot,
   float,
+  instancedDynamicBufferAttribute,
   length,
   max as tslMax,
   normalLocal,
@@ -49,6 +51,12 @@ type BlockShellMaterialOptions = {
   enableCoreMask?: boolean
 }
 
+type InstancedBlockShellMaterialOptions = BlockShellMaterialOptions & {
+  instanceCount: number
+  glowAttribute?: InstancedBufferAttribute
+  clippingPlanes?: Plane[]
+}
+
 export type BlockShellGlowState = {
   normalizedDisplacement: number
   glowColor: ColorRepresentation
@@ -60,6 +68,19 @@ export type BlockShellGlowState = {
 export type BlockShellMaterialController = {
   material: MeshStandardNodeMaterial
   setGlowState: (state: BlockShellGlowState) => void
+  dispose: () => void
+}
+
+export type BlockShellSharedState = {
+  glowColor: ColorRepresentation
+  inwardFaceDirection: BlockDirection
+  enableCoreMask: boolean
+}
+
+export type InstancedBlockShellMaterialController = {
+  material: MeshStandardNodeMaterial
+  glowAttribute: InstancedBufferAttribute
+  setSharedState: (state: BlockShellSharedState) => void
   dispose: () => void
 }
 
@@ -222,6 +243,14 @@ const sharedBumpMap = createBrushedTexture({
 export const blockGeometry = createBlockGeometry()
 // export const blockInnerCoreGeometry = createBlockInnerCoreGeometry()
 
+export function mapNormalizedDisplacementToGlowStrength(
+  normalizedDisplacement: number,
+  maxGlowIntensity: number,
+) {
+  const clampedDisplacement = Math.max(0, Math.min(1, normalizedDisplacement))
+  return Math.min(clampedDisplacement * (0.18 + maxGlowIntensity * 0.21), 1.45)
+}
+
 export function createBlockShellMaterial(options: BlockShellMaterialOptions = {}): BlockShellMaterialController {
   const initialDirection = new Vector3()
   normalizeBlockDirection(options.inwardFaceDirection ?? [0, 0, 1], initialDirection)
@@ -271,7 +300,7 @@ export function createBlockShellMaterial(options: BlockShellMaterialOptions = {}
     .mul(outwardFaceMask)
     .mul(glowStrengthUniform)
 
-  material.emissiveNode = glowColorUniform.mul(emissiveMask)
+  material.emissiveNode = (glowColorUniform as any).mul(emissiveMask)
   material.emissiveIntensity = 1
 
   const normalizedDirection = new Vector3()
@@ -283,8 +312,10 @@ export function createBlockShellMaterial(options: BlockShellMaterialOptions = {}
     inwardFaceDirection,
     enableCoreMask,
   }: BlockShellGlowState) => {
-    const clampedDisplacement = Math.max(0, Math.min(1, normalizedDisplacement))
-    const scaledStrength = Math.min(clampedDisplacement * (0.18 + maxGlowIntensity * 0.21), 1.45)
+    const scaledStrength = mapNormalizedDisplacementToGlowStrength(
+      normalizedDisplacement,
+      maxGlowIntensity,
+    )
 
     glowStrengthUniform.value = scaledStrength
     glowColorUniform.value.set(glowColor)
@@ -302,21 +333,92 @@ export function createBlockShellMaterial(options: BlockShellMaterialOptions = {}
   }
 }
 
-// export function createBlockInnerCoreMaterial(color: ColorRepresentation = '#f2f7ff') {
-//   const material = new MeshBasicMaterial({
-//     color: new Color(color),
-//     transparent: true,
-//     opacity: 0,
-//     blending: AdditiveBlending,
-//     depthWrite: false,
-//     depthTest: false,
-//     toneMapped: false,
-//   })
-//
-//   material.name = 'VaultBlockInnerCoreMaterial'
-//
-//   return material
-// }
+export function createInstancedBlockShellMaterial(
+  options: InstancedBlockShellMaterialOptions,
+): InstancedBlockShellMaterialController {
+  if (options.instanceCount <= 0) {
+    throw new Error('Instanced shell material requires a strictly positive instanceCount.')
+  }
+
+  const initialDirection = new Vector3()
+  normalizeBlockDirection(options.inwardFaceDirection ?? [0, 0, 1], initialDirection)
+
+  const glowColorUniform = uniform(new Color(options.glowColor ?? '#f2f7ff'))
+  const inwardDirectionUniform = uniform(initialDirection.clone())
+  const coreMaskEnabledUniform = uniform(options.enableCoreMask ? 1 : 0)
+  const glowAttribute =
+    options.glowAttribute ??
+    new InstancedBufferAttribute(new Float32Array(options.instanceCount), 1)
+
+  if (glowAttribute.count < options.instanceCount) {
+    throw new Error('Provided glow attribute has fewer items than instanceCount.')
+  }
+
+  glowAttribute.setUsage(DynamicDrawUsage)
+  const glowStrengthNode = instancedDynamicBufferAttribute(glowAttribute, 'float') as any
+
+  const material = new MeshStandardNodeMaterial({
+    color: new Color('#26282f'),
+    metalness: 0.96,
+    roughness: 0.68,
+    roughnessMap: sharedRoughnessMap,
+    bumpMap: sharedBumpMap,
+    bumpScale: 0.858,
+    envMapIntensity: 0.82,
+  })
+
+  material.name = 'VaultBlockShellInstancedMaterial'
+  material.dithering = true
+  material.clippingPlanes = options.clippingPlanes ?? null
+  material.clipShadows = !!(options.clippingPlanes && options.clippingPlanes.length > 0)
+
+  const localNormal = normalLocal.normalize()
+  const normalAbs = abs(localNormal)
+  const axisWeightX = smoothstep(float(0.56), float(0.97), normalAbs.x)
+  const axisWeightY = smoothstep(float(0.56), float(0.97), normalAbs.y)
+  const axisWeightZ = smoothstep(float(0.56), float(0.97), normalAbs.z)
+  const axisWeightSum = tslMax(axisWeightX.add(axisWeightY).add(axisWeightZ), float(0.0001))
+
+  const localPosition = positionLocal
+  const radiusOnXFace = length(vec2(localPosition.y, localPosition.z)).mul(0.9)
+  const radiusOnYFace = length(vec2(localPosition.x, localPosition.z)).mul(0.9)
+  const radiusOnZFace = length(vec2(localPosition.x, localPosition.y)).mul(0.9)
+  const faceRadius = axisWeightX
+    .mul(radiusOnXFace)
+    .add(axisWeightY.mul(radiusOnYFace))
+    .add(axisWeightZ.mul(radiusOnZFace))
+    .div(axisWeightSum)
+  const baseFaceRevealMask = float(0.72)
+  const coreMask = oneMinus(smoothstep(float(0.0), float(1.38), faceRadius))
+
+  const inwardAlignment = dot(localNormal, inwardDirectionUniform.normalize())
+  const inwardFaceSuppression = smoothstep(float(0.72), float(0.98), inwardAlignment)
+  const outwardFaceMask = oneMinus(inwardFaceSuppression)
+  const emissiveMask = baseFaceRevealMask
+    .add(coreMask.mul(0.52).mul(coreMaskEnabledUniform))
+    .mul(outwardFaceMask)
+    .mul(glowStrengthNode)
+
+  material.emissiveNode = (glowColorUniform as any).mul(emissiveMask)
+  material.emissiveIntensity = 1
+
+  const normalizedDirection = new Vector3()
+  const setSharedState = ({ glowColor, inwardFaceDirection, enableCoreMask }: BlockShellSharedState) => {
+    glowColorUniform.value.set(glowColor)
+    normalizeBlockDirection(inwardFaceDirection, normalizedDirection)
+    inwardDirectionUniform.value.copy(normalizedDirection)
+    coreMaskEnabledUniform.value = enableCoreMask ? 1 : 0
+  }
+
+  return {
+    material,
+    glowAttribute,
+    setSharedState,
+    dispose: () => {
+      material.dispose()
+    },
+  }
+}
 
 export const blockTextures = {
   roughnessMap: sharedRoughnessMap,

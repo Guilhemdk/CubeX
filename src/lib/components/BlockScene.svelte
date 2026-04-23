@@ -8,7 +8,7 @@
   import type { OrbitControls as OrbitControlsImpl } from 'three/examples/jsm/controls/OrbitControls.js'
   import type { DirectionalLight, PerspectiveCamera } from 'three'
   import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
-  import Block from './Block.svelte'
+  import FloorSurface from './FloorSurface.svelte'
 
   export let controls = true
   export let onDebugChange:
@@ -21,7 +21,7 @@
   let orbitControls: OrbitControlsImpl | undefined
 
   function configureCamera(camera: PerspectiveCamera) {
-    camera.lookAt(0, 0.02, 0)
+    camera.lookAt(0, -0.14, 0)
   }
 
   function configureControls() {
@@ -30,13 +30,13 @@
     orbitControls.enableDamping = true
     orbitControls.dampingFactor = 0.08
     orbitControls.enablePan = false
-    orbitControls.minDistance = 1.85
-    orbitControls.maxDistance = 3.5
-    orbitControls.minPolarAngle = 0.9
-    orbitControls.maxPolarAngle = 1.6
+    orbitControls.minDistance = 2.15
+    orbitControls.maxDistance = 4.2
+    orbitControls.minPolarAngle = 0.82
+    orbitControls.maxPolarAngle = 1.58
     orbitControls.minAzimuthAngle = -1.1
     orbitControls.maxAzimuthAngle = 1.1
-    orbitControls.target.set(0, 0.02, 0)
+    orbitControls.target.set(0, -0.14, 0)
     orbitControls.update()
   }
 
@@ -58,6 +58,7 @@
     renderer.toneMappingExposure = 1.12
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFShadowMap
+    ;(renderer as unknown as { localClippingEnabled: boolean }).localClippingEnabled = true
     scene.background = background
 
     const pmrem = new PMREMGenerator(renderer)
@@ -102,20 +103,4 @@
 <T.DirectionalLight position={[-2.75, 1.25, 4.4]} intensity={0.82} />
 <T.DirectionalLight position={[-3.85, 2.8, -2.35]} intensity={0.34} />
 
-<T.Mesh position={[0, -0.505, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow={true}>
-  <T.PlaneGeometry args={[8, 8]} />
-  <T.ShadowMaterial transparent={true} opacity={0.18} />
-</T.Mesh>
-
-<Block
-  position={[0, 0, 0]}
-  rotation={[0.03, -Math.PI / 4, 0]}
-  inwardFaceDirection={[0, 0, 1]}
-  enableCoreMask={false}
-  extractionDistance={0.16}
-  springStiffness={200}
-  springDamping={19}
-  maxGlowIntensity={4.35}
-  glowColor="#FFF1DB"
-  {onDebugChange}
-/>
+<FloorSurface {onDebugChange} />
