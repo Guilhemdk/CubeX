@@ -54,6 +54,9 @@ type BlockShellMaterialOptions = {
 type InstancedBlockShellMaterialOptions = BlockShellMaterialOptions & {
   instanceCount: number
   glowAttribute?: InstancedBufferAttribute
+  staticGlowAttribute?: InstancedBufferAttribute
+  primaryVeinFaceAttribute?: InstancedBufferAttribute
+  secondaryVeinFaceAttribute?: InstancedBufferAttribute
   clippingPlanes?: Plane[]
 }
 
@@ -80,6 +83,9 @@ export type BlockShellSharedState = {
 export type InstancedBlockShellMaterialController = {
   material: MeshStandardNodeMaterial
   glowAttribute: InstancedBufferAttribute
+  staticGlowAttribute: InstancedBufferAttribute
+  primaryVeinFaceAttribute: InstancedBufferAttribute
+  secondaryVeinFaceAttribute: InstancedBufferAttribute
   setSharedState: (state: BlockShellSharedState) => void
   dispose: () => void
 }
@@ -349,13 +355,34 @@ export function createInstancedBlockShellMaterial(
   const glowAttribute =
     options.glowAttribute ??
     new InstancedBufferAttribute(new Float32Array(options.instanceCount), 1)
+  const staticGlowAttribute =
+    options.staticGlowAttribute ??
+    new InstancedBufferAttribute(new Float32Array(options.instanceCount), 1)
+  const primaryVeinFaceAttribute =
+    options.primaryVeinFaceAttribute ??
+    new InstancedBufferAttribute(new Float32Array(options.instanceCount * 3), 3)
+  const secondaryVeinFaceAttribute =
+    options.secondaryVeinFaceAttribute ??
+    new InstancedBufferAttribute(new Float32Array(options.instanceCount * 3), 3)
 
   if (glowAttribute.count < options.instanceCount) {
     throw new Error('Provided glow attribute has fewer items than instanceCount.')
   }
+  if (staticGlowAttribute.count < options.instanceCount) {
+    throw new Error('Provided static glow attribute has fewer items than instanceCount.')
+  }
+  if (primaryVeinFaceAttribute.count < options.instanceCount) {
+    throw new Error('Provided primary vein face attribute has fewer items than instanceCount.')
+  }
+  if (secondaryVeinFaceAttribute.count < options.instanceCount) {
+    throw new Error('Provided secondary vein face attribute has fewer items than instanceCount.')
+  }
 
   glowAttribute.setUsage(DynamicDrawUsage)
-  const glowStrengthNode = instancedDynamicBufferAttribute(glowAttribute, 'float') as any
+  const dynamicGlowStrengthNode = instancedDynamicBufferAttribute(glowAttribute, 'float') as any
+  const staticGlowStrengthNode = instancedDynamicBufferAttribute(staticGlowAttribute, 'float') as any
+  const primaryVeinFaceNode = instancedDynamicBufferAttribute(primaryVeinFaceAttribute, 'vec3') as any
+  const secondaryVeinFaceNode = instancedDynamicBufferAttribute(secondaryVeinFaceAttribute, 'vec3') as any
 
   const material = new MeshStandardNodeMaterial({
     color: new Color('#26282f'),
@@ -394,10 +421,14 @@ export function createInstancedBlockShellMaterial(
   const inwardAlignment = dot(localNormal, inwardDirectionUniform.normalize())
   const inwardFaceSuppression = smoothstep(float(0.72), float(0.98), inwardAlignment)
   const outwardFaceMask = oneMinus(inwardFaceSuppression)
+  const primaryVeinFaceMask = smoothstep(float(0.58), float(0.96), dot(localNormal, primaryVeinFaceNode))
+  const secondaryVeinFaceMask = smoothstep(float(0.58), float(0.96), dot(localNormal, secondaryVeinFaceNode))
+  const veinFaceMask = tslMax(primaryVeinFaceMask, secondaryVeinFaceMask)
+  const combinedGlowStrength = tslMax(dynamicGlowStrengthNode, staticGlowStrengthNode.mul(veinFaceMask))
   const emissiveMask = baseFaceRevealMask
     .add(coreMask.mul(0.52).mul(coreMaskEnabledUniform))
     .mul(outwardFaceMask)
-    .mul(glowStrengthNode)
+    .mul(combinedGlowStrength)
 
   material.emissiveNode = (glowColorUniform as any).mul(emissiveMask)
   material.emissiveIntensity = 1
@@ -413,6 +444,9 @@ export function createInstancedBlockShellMaterial(
   return {
     material,
     glowAttribute,
+    staticGlowAttribute,
+    primaryVeinFaceAttribute,
+    secondaryVeinFaceAttribute,
     setSharedState,
     dispose: () => {
       material.dispose()

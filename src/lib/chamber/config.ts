@@ -12,7 +12,7 @@ export interface ChamberSurfaceDefinition {
 }
 
 export const CHAMBER_CONFIG = {
-  width: 5.2,
+  width: 4.2,
   depth: 9.4,
   height: 2.6,
   floorY: -0.48,
@@ -23,44 +23,44 @@ export type LightingPresetName = 'dark' | 'noir' | 'preview'
 export const LIGHTING_PRESETS = {
   dark: {
     background: '#07090d',
-    exposure: 0.28,
+    exposure: 0.24,
     environmentBlur: 0.04,
-    ambientIntensity: 0.01,
+    ambientIntensity: 0.003,
     hemisphere: {
       skyColor: '#8b93a3',
       groundColor: '#050608',
-      intensity: 0.12,
+      intensity: 0.045,
     },
     keyLight: {
       position: [3.6, 4.5, 3.15] as [number, number, number],
-      intensity: 1,
+      intensity: 0.24,
     },
     fillLightA: {
       position: [-2.75, 1.25, 4.4] as [number, number, number],
-      intensity: 0.18,
+      intensity: 0.07,
     },
     fillLightB: {
       position: [-3.85, 2.8, -2.35] as [number, number, number],
-      intensity: 0.08,
+      intensity: 0.03,
     },
   },
   noir: {
     background: '#050609',
-    exposure: 0.22,
+    exposure: 0.19,
     environmentBlur: 0.05,
-    ambientIntensity: 0.005,
+    ambientIntensity: 0.0015,
     hemisphere: {
       skyColor: '#7d8798',
       groundColor: '#040507',
-      intensity: 0.08,
+      intensity: 0.032,
     },
     keyLight: {
       position: [3.6, 4.5, 3.15] as [number, number, number],
-      intensity: 0.8,
+      intensity: 0.18,
     },
     fillLightA: {
       position: [-2.75, 1.25, 4.4] as [number, number, number],
-      intensity: 0.12,
+      intensity: 0.05,
     },
     fillLightB: {
       position: [-3.85, 2.8, -2.35] as [number, number, number],
@@ -108,6 +108,33 @@ export const SURFACE_GENERATOR_CONFIG = {
     embeddedDepth: 0.002,
   },
 } as const
+
+export const SURFACE_VEIN_CONFIG = {
+  seedOffset: 1483,
+  sideWallSymmetrySeed: 9121,
+  branchCounts: {
+    floor: 3,
+    leftWall: 3,
+    rightWall: 3,
+    backWall: 4,
+    ceiling: 3,
+  },
+  startSpacingRatio: 0.62,
+  maxPathStepRatio: 0.72,
+  branchPoolSize: 4,
+  jitter: 0.06,
+  turnPenalty: 0.51,
+  backtrackPenalty: 0.45,
+  revisitPenalty: 0.52,
+  trunkAttractor: 0.18,
+  staticGlow: {
+    min: 0.22,
+    max: 0.94,
+    trunkBoost: 0.59,
+    centerBoost: 0.16,
+    centerBoostRadius: 0.18,
+  },
+} as const
 const HALF_WIDTH = CHAMBER_CONFIG.width / 2
 const HALF_DEPTH = CHAMBER_CONFIG.depth / 2
 const WALL_CENTER_Y = CHAMBER_CONFIG.floorY + CHAMBER_CONFIG.height / 2
@@ -139,7 +166,7 @@ export const CHAMBER_SURFACES: readonly ChamberSurfaceDefinition[] = [
     position: [HALF_WIDTH, WALL_CENTER_Y, 0],
     rotation: [0, 0, Math.PI / 2],
     inwardFaceDirection: [0, 1, 0],
-    seed: SURFACE_GENERATOR_CONFIG.grid.seed + 211,
+    seed: SURFACE_GENERATOR_CONFIG.grid.seed + 101,
   },
   {
     id: 'backWall',
@@ -173,7 +200,7 @@ export const SURFACE_INTERACTION_CONFIG = {
 } as const
 
 export const SURFACE_SHADER_CONFIG = {
-  glowColor: '#ff6600',
+  glowColor: '#FFB100',
   maxGlowIntensity: 4.35,
   enableCoreMask: false,
 } as const

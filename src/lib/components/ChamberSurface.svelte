@@ -22,6 +22,7 @@
     type ChamberSurfaceDefinition,
   } from '../chamber/config'
   import { createSurfaceLayout } from '../chamber/surfaces/createSurfaceLayout'
+  import { createSurfaceVeinLayout } from '../chamber/surfaces/createSurfaceVeinLayout'
 
   export let surface: ChamberSurfaceDefinition
   export let onDebugChange:
@@ -36,6 +37,10 @@
   const instanceCount = layout.instances.length
   const surfaceOrigin = new Vector3(...surface.position)
   const surfaceNormal = new Vector3(...surface.inwardFaceDirection)
+  const veinLayout = createSurfaceVeinLayout({
+    surface,
+    instances: layout.instances,
+  })
 
   if (surfaceNormal.lengthSq() === 0) {
     surfaceNormal.set(0, 1, 0)
@@ -44,12 +49,18 @@
   surfaceNormal.normalize()
 
   const clippingPlane = new Plane(surfaceNormal, -surfaceNormal.dot(surfaceOrigin))
-  const glowAttribute = new InstancedBufferAttribute(new Float32Array(instanceCount), 1)
-  glowAttribute.setUsage(DynamicDrawUsage)
+  const dynamicGlowAttribute = new InstancedBufferAttribute(new Float32Array(instanceCount), 1)
+  dynamicGlowAttribute.setUsage(DynamicDrawUsage)
+  const staticGlowAttribute = new InstancedBufferAttribute(veinLayout.staticGlow, 1)
+  const primaryVeinFaceAttribute = new InstancedBufferAttribute(veinLayout.primaryFaces, 3)
+  const secondaryVeinFaceAttribute = new InstancedBufferAttribute(veinLayout.secondaryFaces, 3)
 
   const shellMaterialController = createInstancedBlockShellMaterial({
     instanceCount,
-    glowAttribute,
+    glowAttribute: dynamicGlowAttribute,
+    staticGlowAttribute,
+    primaryVeinFaceAttribute,
+    secondaryVeinFaceAttribute,
     glowColor: SURFACE_SHADER_CONFIG.glowColor,
     inwardFaceDirection: surface.inwardFaceDirection,
     enableCoreMask: SURFACE_SHADER_CONFIG.enableCoreMask,
@@ -63,7 +74,7 @@
   })
 
   const shellMaterial = shellMaterialController.material
-  const glowStrengthArray = glowAttribute.array as Float32Array
+  const dynamicGlowStrengthArray = dynamicGlowAttribute.array as Float32Array
 
   let rootGroup: Group | undefined
   let instancedMesh: InstancedMesh | undefined
@@ -136,12 +147,15 @@
     for (let index = 0; index < instanceCount; index += 1) {
       displacement[index] = 0
       velocity[index] = 0
-      glowStrengthArray[index] = 0
+      dynamicGlowStrengthArray[index] = 0
       writeInstanceMatrix(index, 0)
     }
 
     instancedMesh.instanceMatrix.needsUpdate = true
-    glowAttribute.needsUpdate = true
+    dynamicGlowAttribute.needsUpdate = true
+    staticGlowAttribute.needsUpdate = true
+    primaryVeinFaceAttribute.needsUpdate = true
+    secondaryVeinFaceAttribute.needsUpdate = true
     emitDebugState(0)
     initialized = true
   }
@@ -191,7 +205,7 @@
           SURFACE_INTERACTION_CONFIG.maxDisplacement > 0
             ? Math.max(0, Math.min(1, displacement[index] / SURFACE_INTERACTION_CONFIG.maxDisplacement))
             : 0
-        glowStrengthArray[index] = mapNormalizedDisplacementToGlowStrength(
+        dynamicGlowStrengthArray[index] = mapNormalizedDisplacementToGlowStrength(
           normalizedDisplacement,
           SURFACE_SHADER_CONFIG.maxGlowIntensity,
         )
@@ -203,7 +217,7 @@
       }
 
       instancedMesh.instanceMatrix.needsUpdate = true
-      glowAttribute.needsUpdate = true
+      dynamicGlowAttribute.needsUpdate = true
       emitDebugState(maxFrameDisplacement)
 
       if (!pointerActive && !hasMotion) {
