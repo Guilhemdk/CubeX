@@ -191,7 +191,6 @@
           SURFACE_INTERACTION_CONFIG.maxDisplacement > 0
             ? Math.max(0, Math.min(1, displacement[index] / SURFACE_INTERACTION_CONFIG.maxDisplacement))
             : 0
-
         glowStrengthArray[index] = mapNormalizedDisplacementToGlowStrength(
           normalizedDisplacement,
           SURFACE_SHADER_CONFIG.maxGlowIntensity,
@@ -245,8 +244,6 @@
   <T.InstancedMesh
     args={[blockGeometry, shellMaterial, instanceCount]}
     bind:ref={instancedMesh}
-    castShadow={SURFACE_RENDER_CONFIG.castShadow}
-    receiveShadow={SURFACE_RENDER_CONFIG.receiveShadow}
     onpointerenter={handlePointerMove}
     onpointermove={handlePointerMove}
     onpointerleave={handlePointerLeave}

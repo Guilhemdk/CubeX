@@ -29,7 +29,6 @@ export function createSurfaceLayout(input: SurfaceLayoutInput): SurfaceLayout {
     maxSize: SURFACE_GENERATOR_CONFIG.grid.maxSize,
     protrusionMin: SURFACE_GENERATOR_CONFIG.protrusion.min,
     protrusionMax: SURFACE_GENERATOR_CONFIG.protrusion.max,
-    gap: SURFACE_GENERATOR_CONFIG.gap,
     stopChance: SURFACE_GENERATOR_CONFIG.grid.stopChance,
     seed: input.seed,
   })

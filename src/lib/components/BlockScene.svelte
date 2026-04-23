@@ -6,22 +6,23 @@
   import { PMREMGenerator } from 'three/webgpu'
   import type { WebGPURenderer } from 'three/webgpu'
   import type { OrbitControls as OrbitControlsImpl } from 'three/examples/jsm/controls/OrbitControls.js'
-  import type { DirectionalLight, PerspectiveCamera } from 'three'
+  import type { PerspectiveCamera } from 'three'
   import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
+  import { LIGHTING_CONFIG } from '../chamber/config'
   import Chamber from './Chamber.svelte'
 
-  export let controls = true
+  export let controls = false
   export let onDebugChange:
     | ((state: { hovered: boolean; displacement: number }) => void)
     | undefined = undefined
 
   const { renderer, scene, toneMapping } = useThrelte<WebGPURenderer>()
   interactivity()
-  const background = new THREE.Color('#d7d1ca')
+  const background = new THREE.Color(LIGHTING_CONFIG.background)
   let orbitControls: OrbitControlsImpl | undefined
 
   function configureCamera(camera: PerspectiveCamera) {
-    camera.lookAt(0, -0.14, 0)
+    camera.lookAt(0, 0.4, 0)
   }
 
   function configureControls() {
@@ -40,30 +41,16 @@
     orbitControls.update()
   }
 
-  function configureKeyLight(light: DirectionalLight) {
-    light.shadow.mapSize.setScalar(1024)
-    light.shadow.bias = -0.00035
-    light.shadow.normalBias = 0.02
-    light.shadow.camera.near = 0.5
-    light.shadow.camera.far = 16
-    light.shadow.camera.left = -2.4
-    light.shadow.camera.right = 2.4
-    light.shadow.camera.top = 2.4
-    light.shadow.camera.bottom = -2.4
-    light.shadow.camera.updateProjectionMatrix()
-  }
 
   onMount(() => {
     toneMapping.set(THREE.ACESFilmicToneMapping)
-    renderer.toneMappingExposure = 1.12
-    renderer.shadowMap.enabled = true
-    renderer.shadowMap.type = THREE.PCFShadowMap
+    renderer.toneMappingExposure = LIGHTING_CONFIG.exposure
     ;(renderer as unknown as { localClippingEnabled: boolean }).localClippingEnabled = true
     scene.background = background
 
     const pmrem = new PMREMGenerator(renderer)
     const roomEnvironment = new RoomEnvironment()
-    const environmentTarget = pmrem.fromScene(roomEnvironment, 0.04)
+    const environmentTarget = pmrem.fromScene(roomEnvironment, LIGHTING_CONFIG.environmentBlur)
 
     scene.environment = environmentTarget.texture
 
@@ -81,7 +68,7 @@
 
 <T.PerspectiveCamera
   makeDefault
-  position={[1.9, 1.1, 2.25]}
+  position={[0, 0.5, 7.25]}
   fov={28}
   near={0.1}
   far={30}
@@ -92,15 +79,19 @@
   {/if}
 </T.PerspectiveCamera>
 
-<T.AmbientLight intensity={0.24} />
-<T.HemisphereLight args={['#fffdf7', '#b7b0a9', 0.94]} />
-<T.DirectionalLight
-  position={[3.6, 4.5, 3.15]}
-  intensity={2.45}
-  castShadow={true}
-  oncreate={configureKeyLight}
+<T.AmbientLight intensity={LIGHTING_CONFIG.ambientIntensity} />
+<T.HemisphereLight
+  args={[
+    LIGHTING_CONFIG.hemisphere.skyColor,
+    LIGHTING_CONFIG.hemisphere.groundColor,
+    LIGHTING_CONFIG.hemisphere.intensity,
+  ]}
 />
-<T.DirectionalLight position={[-2.75, 1.25, 4.4]} intensity={0.82} />
-<T.DirectionalLight position={[-3.85, 2.8, -2.35]} intensity={0.34} />
+<T.DirectionalLight
+  position={LIGHTING_CONFIG.keyLight.position}
+  intensity={LIGHTING_CONFIG.keyLight.intensity}
+/>
+<T.DirectionalLight position={LIGHTING_CONFIG.fillLightA.position} intensity={LIGHTING_CONFIG.fillLightA.intensity} />
+<T.DirectionalLight position={LIGHTING_CONFIG.fillLightB.position} intensity={LIGHTING_CONFIG.fillLightB.intensity} />
 
 <Chamber {onDebugChange} />

@@ -267,7 +267,7 @@ export function createBlockShellMaterial(options: BlockShellMaterialOptions = {}
     roughnessMap: sharedRoughnessMap,
     bumpMap: sharedBumpMap,
     bumpScale: 0.858,
-    envMapIntensity: 0.82,
+    envMapIntensity: 0.28,
   })
 
   material.name = 'VaultBlockShellMaterial'
@@ -364,7 +364,7 @@ export function createInstancedBlockShellMaterial(
     roughnessMap: sharedRoughnessMap,
     bumpMap: sharedBumpMap,
     bumpScale: 0.858,
-    envMapIntensity: 0.82,
+    envMapIntensity: 0.00,
   })
 
   material.name = 'VaultBlockShellInstancedMaterial'
